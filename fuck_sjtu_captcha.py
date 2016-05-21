@@ -39,10 +39,11 @@ class SJTUCaptcha(object):
 	def preprocess(self):
 		# 获取验证码预处理结果
 		self._binaryzation()
-		for i in self._cut_images():
-			# i.show()
-			self._rotate_image(i).show()
-			# print i.size
+		child_images = self._cut_images()
+		for i in range(len(child_images)):
+			# print [val for val in self._resize_to_norm(child_images[i]).getdata()]
+			self._resize_to_norm(child_images[i]).show()
+			self._captcha_to_string(self._resize_to_norm(child_images[i]), save_as = '%d' % i)
 
 	def _binaryzation(self):
 		"""
@@ -191,6 +192,28 @@ class SJTUCaptcha(object):
 		offset = ((NORM_SIZE - width) / 2, (NORM_SIZE - height) / 2)
 		new_image.paste(image, offset)
 		return new_image
+
+	def _captcha_to_string(self, image, save_as):
+		"""
+		将验证码转换为数字编码 (2*2为一格，范围0-4)
+		:param image: 图像
+		:return: 数字编码字符串
+		"""
+		if image.size != (NORM_SIZE, NORM_SIZE):
+			raise Exception("Image needs to normalize before to string")
+        
+		data = []
+		for x in range(0, NORM_SIZE):
+			data.append([])
+			for y in range(0, NORM_SIZE):
+				if image.getpixel((x, y)) == COLOR_RGB_BLACK:
+					data[x].append(str(1))
+				else:
+					data[x].append(str(0))
+
+		with open(save_as, 'w') as outfile:
+			for row in data:
+				outfile.write(''.join(row) + '\n')
 
 def main():
 	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%87))
