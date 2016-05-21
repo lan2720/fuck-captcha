@@ -205,7 +205,7 @@ class SJTUCaptcha(object):
 		if image.size != (NORM_SIZE, NORM_SIZE):
 			raise Exception("Image needs to normalize before to string")
         
-        # 将pixel写到二维数组中
+		# 将pixel写到二维数组中
 		data = []
 		for x in range(0, NORM_SIZE):
 			data.append([])
