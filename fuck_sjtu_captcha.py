@@ -11,7 +11,10 @@
 6. 持久化，string hickle
 """
 from PIL import Image
+import numpy as np
 import os
+
+
 from utils import (
 	COLOR_RGB_BLACK, COLOR_RGB_WHITE, COLOR_RGBA_BLACK, COLOR_RGBA_WHITE,
 	BORDER_LEFT, BORDER_TOP, BORDER_RIGHT, BORDER_BOTTOM,
@@ -193,16 +196,16 @@ class SJTUCaptcha(object):
 		new_image.paste(image, offset)
 		return new_image
 
-	def _captcha_to_string(self, image, save_as):
+	def _captcha_to_2d_list(self, image):
 		"""
 		将验证码转换为数字编码
 		:param image: 图像
 		:return: 数字编码字符串
 		"""
-		import numpy as np
 		if image.size != (NORM_SIZE, NORM_SIZE):
 			raise Exception("Image needs to normalize before to string")
         
+        # 将pixel写到二维数组中
 		data = []
 		for x in range(0, NORM_SIZE):
 			data.append([])
@@ -211,17 +214,26 @@ class SJTUCaptcha(object):
 
 		for y in range(0, NORM_SIZE):
 			for x in range(0, NORM_SIZE):
-				if image.getpixel((x, y)) == COLOR_RGB_BLACK:
-					data[y][x] = str(1)
-				else:
-					data[y][x] = str(0)
+				data[y][x] = 1 if image.getpixel((x, y)) == COLOR_RGB_BLACK else 0
 
+		return data
+
+	def _captcha_to_string(self, image, save_as):
+		data = self._captcha_to_2d_list(image)
+		# 写到文件: data的数据类型必须是str(map转换)
 		with open(save_as, 'w') as outfile:
 			for row in data:
-				outfile.write(''.join(row) + '\n')
+				outfile.write(''.join(map(str, row)) + '\n')
+
+	def _captcha_to_array(self, image):
+		data = self._captcha_to_2d_list(image)
+		return np.asarray(data).reshape(1, -1).flatten()
+
 
 def main():
-	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%29))
+	train_data = np.zeros(shape = (1500, NORM_SIZE*NORM_SIZE))
+	# for i in xrange(1500):
+	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%10))
 	myCaptcha.preprocess()
 	
 if __name__ == '__main__':
