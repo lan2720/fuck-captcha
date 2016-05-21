@@ -195,7 +195,7 @@ class SJTUCaptcha(object):
 
 	def _captcha_to_string(self, image, save_as):
 		"""
-		将验证码转换为数字编码 (2*2为一格，范围0-4)
+		将验证码转换为数字编码
 		:param image: 图像
 		:return: 数字编码字符串
 		"""
