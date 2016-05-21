@@ -41,12 +41,18 @@ class SJTUCaptcha(object):
 			raise Exception('captcha image file is unavailable')
 
 	def preprocess(self):
-		# 获取验证码预处理结果
+		# 获取验证码预处理结果: 返回二维list，一行表示一个child image
+		res = []
 		self._binaryzation()
+		self._image.show()
 		child_images = self._cut_images()
 		for i in range(len(child_images)):
-			# self._resize_to_norm(child_images[i]).show()
-			self._captcha_to_string(self._resize_to_norm(child_images[i]), save_as = '%d' % i)
+			# pass
+			child_images[i].show()
+			# normalized_image = self._resize_to_norm(child_images[i])
+			# self._captcha_to_string(normalized_image, save_as = '%d'%i)
+			# res.append(self._captcha_to_list(normalized_image))
+		return res
 
 	def _binaryzation(self):
 		"""
@@ -60,7 +66,7 @@ class SJTUCaptcha(object):
 				value = 0.299 * r + 0.587 * g + 0.114 * b
 				#value就是灰度值，这里使用127作为阀值，
 				#小于127的就认为是黑色也就是0 大于等于127的就是白色，也就是255
-				if value < 127:
+				if value < 170:
 					self._image.putpixel((x, y), COLOR_RGB_BLACK)
 				else:
 					self._image.putpixel((x, y), COLOR_RGB_WHITE)
@@ -105,6 +111,7 @@ class SJTUCaptcha(object):
 		"""
 		# _image.size返回的是(width, height)
 		split_seq = self._get_split_seq(self._get_projection_x())
+		print split_seq
 
 		# 切割图片
 		croped_images = []
@@ -196,7 +203,7 @@ class SJTUCaptcha(object):
 		new_image.paste(image, offset)
 		return new_image
 
-	def _captcha_to_2d_list(self, image):
+	def _captcha_to_list(self, image):
 		"""
 		将验证码转换为数字编码
 		:param image: 图像
@@ -205,36 +212,32 @@ class SJTUCaptcha(object):
 		if image.size != (NORM_SIZE, NORM_SIZE):
 			raise Exception("Image needs to normalize before to string")
         
-		# 将pixel写到二维数组中
-		data = []
-		for x in range(0, NORM_SIZE):
-			data.append([])
-			for y in range(0, NORM_SIZE):
-				data[-1].append(0)
-
+		# 将pixel写到列表中
+		data = [0]*(NORM_SIZE*NORM_SIZE)
 		for y in range(0, NORM_SIZE):
 			for x in range(0, NORM_SIZE):
-				data[y][x] = 1 if image.getpixel((x, y)) == COLOR_RGB_BLACK else 0
+				data[y*NORM_SIZE + x] = 1 if image.getpixel((x, y)) == COLOR_RGB_BLACK else 0
 
 		return data
 
 	def _captcha_to_string(self, image, save_as):
-		data = self._captcha_to_2d_list(image)
+		data = self._captcha_to_list(image)
 		# 写到文件: data的数据类型必须是str(map转换)
 		with open(save_as, 'w') as outfile:
-			for row in data:
-				outfile.write(''.join(map(str, row)) + '\n')
-
-	def _captcha_to_array(self, image):
-		data = self._captcha_to_2d_list(image)
-		return np.asarray(data).reshape(1, -1).flatten()
-
+			for row in xrange(NORM_SIZE):
+				outfile.write(''.join(map(str, data[row*NORM_SIZE:(row+1)*NORM_SIZE])) + '\n')
 
 def main():
-	train_data = np.zeros(shape = (1500, NORM_SIZE*NORM_SIZE))
-	# for i in xrange(1500):
-	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%10))
-	myCaptcha.preprocess()
+	train_data = []#np.zeros(shape = (1500, NORM_SIZE*NORM_SIZE))
+	# for i in xrange(11, 14):
+	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%12))
+	s = myCaptcha.preprocess()
+	# print len(s)
+	# train_data.extend(myCaptcha.preprocess())
+
+	# print "===="
+	# aaa = np.asarray(train_data)
+	# print aaa.shape
 	
 if __name__ == '__main__':
 	main()
