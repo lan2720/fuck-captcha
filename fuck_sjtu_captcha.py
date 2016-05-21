@@ -41,8 +41,7 @@ class SJTUCaptcha(object):
 		self._binaryzation()
 		child_images = self._cut_images()
 		for i in range(len(child_images)):
-			# print [val for val in self._resize_to_norm(child_images[i]).getdata()]
-			self._resize_to_norm(child_images[i]).show()
+			# self._resize_to_norm(child_images[i]).show()
 			self._captcha_to_string(self._resize_to_norm(child_images[i]), save_as = '%d' % i)
 
 	def _binaryzation(self):
@@ -199,6 +198,7 @@ class SJTUCaptcha(object):
 		:param image: 图像
 		:return: 数字编码字符串
 		"""
+		import numpy as np
 		if image.size != (NORM_SIZE, NORM_SIZE):
 			raise Exception("Image needs to normalize before to string")
         
@@ -206,19 +206,22 @@ class SJTUCaptcha(object):
 		for x in range(0, NORM_SIZE):
 			data.append([])
 			for y in range(0, NORM_SIZE):
+				data[-1].append(0)
+
+		for y in range(0, NORM_SIZE):
+			for x in range(0, NORM_SIZE):
 				if image.getpixel((x, y)) == COLOR_RGB_BLACK:
-					data[x].append(str(1))
+					data[y][x] = str(1)
 				else:
-					data[x].append(str(0))
+					data[y][x] = str(0)
 
 		with open(save_as, 'w') as outfile:
 			for row in data:
 				outfile.write(''.join(row) + '\n')
 
 def main():
-	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%87))
+	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%29))
 	myCaptcha.preprocess()
 	
-
 if __name__ == '__main__':
 	main()
