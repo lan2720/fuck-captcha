@@ -6,6 +6,8 @@
 1. 二值化
 2. 去噪点(由于sjtu验证码没有噪点，不需要这步)
 3. 字符切割
+4. 单个字符图片旋转到合适角度:旋转卡壳算法（投影至x轴长度最小）(效果不好，sjtu的验证码都没什么旋转，暂时不用后续再加)
+5. 
 """
 from PIL import Image
 import os
@@ -13,6 +15,7 @@ from utils import (
 	COLOR_RGB_BLACK, COLOR_RGB_WHITE, COLOR_RGBA_BLACK, COLOR_RGBA_WHITE,
 	BORDER_LEFT, BORDER_TOP, BORDER_RIGHT, BORDER_BOTTOM,
 	RAW_DATA_DIR, PROCESSED_DATA_DIR,
+	NORM_SIZE,
 )
 
 # 存放处理后的图片数据
@@ -37,8 +40,9 @@ class SJTUCaptcha(object):
 		# 获取验证码预处理结果
 		self._binaryzation()
 		for i in self._cut_images():
-			i.show()
-		
+			# i.show()
+			self._rotate_image(i).show()
+			# print i.size
 
 	def _binaryzation(self):
 		"""
@@ -70,7 +74,6 @@ class SJTUCaptcha(object):
 					break
 		return p_x
 
-
 	# 获取切割后的x轴坐标点，返回值为[初始位置，长度]的列表
 	# crop((start_x, start_y, start_x + width, start_y + height))
 	def _get_split_seq(self, projection_x):
@@ -98,15 +101,13 @@ class SJTUCaptcha(object):
 		"""
 		# _image.size返回的是(width, height)
 		split_seq = self._get_split_seq(self._get_projection_x())
-		length = len(split_seq)
-
-		
 
 		# 切割图片
 		croped_images = []
-
 		height = self._image.size[1]
+
 		for start_x, width in split_seq:
+			# 同时去掉y轴上下多余的空白
 			begin_row = 0
 			end_row = height - 1
 			for row in range(height):
@@ -130,9 +131,69 @@ class SJTUCaptcha(object):
 			croped_images.append(self._image.crop((start_x, begin_row, start_x + width, end_row + 1)))
 		
 		return croped_images
+	
+	def _get_black_border(self, image):
+		"""
+		获取指定图像的内容边界坐标
+		:param image: 图像 Image Object
+		:return: 图像内容边界坐标tuple (left, top, right, bottom)
+		"""
+		width, height = image.size
+		max_x = max_y = 0
+		min_x = width - 1
+		min_y = height - 1
+		for y in range(height):
+			for x in range(width):
+				if image.getpixel((x, y)) == COLOR_RGBA_BLACK:
+					min_x = min(min_x, x)
+					max_x = max(max_x, x)
+					min_y = min(min_y, y)
+					max_y = max(max_y, y)
+		return min_x, min_y, max_x, max_y
+
+	def _rotate_image(self, image):
+		"""
+		将单个字符图片旋转到合适角度 (投影至X轴长度最小)
+		:return: 旋转后的图像 (RGB)
+		"""
+		image = image.convert('RGBA')
+		optimisim_image = image
+		for angle in range(-30, 31):
+			image_copy = image.rotate(angle, expand=True)
+			fff = Image.new('RGBA', image_copy.size, (255, )*4)
+			out = Image.composite(image_copy, fff, image_copy)
+
+			border_out = self._get_black_border(out)
+			border_optimisim = self._get_black_border(optimisim_image)
+			if border_out[BORDER_RIGHT] - border_out[BORDER_LEFT] + 1 < border_optimisim[BORDER_RIGHT] - border_optimisim[BORDER_LEFT] + 1:
+				optimisim_image = out
+
+		border = self._get_black_border(optimisim_image)
+		optimisim_image = optimisim_image.crop((
+		    border[BORDER_LEFT],
+		    border[BORDER_TOP],
+		    border[BORDER_RIGHT],
+		    border[BORDER_BOTTOM]
+		))
+		optimisim_image = optimisim_image.convert('RGB')
+		return optimisim_image
+
+	def _resize_to_norm(self, image):
+		"""
+		将单个图像缩放至32x32像素标准图像
+		:param image: 图像 (RGB)
+		:return: 缩放后的Image Object
+		"""
+		if image.size[0] > NORM_SIZE or image.size[1] > NORM_SIZE:
+			image = image.resize((NORM_SIZE, NORM_SIZE))
+		width, height = image.size
+		new_image = Image.new('RGB', (NORM_SIZE, NORM_SIZE), COLOR_RGB_WHITE)
+		offset = ((NORM_SIZE - width) / 2, (NORM_SIZE - height) / 2)
+		new_image.paste(image, offset)
+		return new_image
 
 def main():
-	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%15))
+	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%87))
 	myCaptcha.preprocess()
 	
 
