@@ -4,7 +4,7 @@
 验证码处理步骤:
 
 1. 二值化
-2. 去噪点(由于sjtu验证码没有早点，不需要这步)
+2. 去噪点(由于sjtu验证码没有噪点，不需要这步)
 3. 字符切割
 """
 from PIL import Image
@@ -36,7 +36,8 @@ class SJTUCaptcha(object):
 	def preprocess(self):
 		# 获取验证码预处理结果
 		self._binaryzation()
-		self._cut_images()
+		for i in self._cut_images():
+			i.show()
 		
 
 	def _binaryzation(self):
@@ -97,10 +98,38 @@ class SJTUCaptcha(object):
 		"""
 		# _image.size返回的是(width, height)
 		split_seq = self._get_split_seq(self._get_projection_x())
-		for start_x, width in split_seq:
-			subImage = self._image.crop((start_x, 0, start_x + width, self._image.size[1]))
-			subImage.show()
+		length = len(split_seq)
+
 		
+
+		# 切割图片
+		croped_images = []
+
+		height = self._image.size[1]
+		for start_x, width in split_seq:
+			begin_row = 0
+			end_row = height - 1
+			for row in range(height):
+				flag = True
+				for col in range(start_x, start_x + width):
+					if self._image.getpixel((col, row)) == COLOR_RGB_BLACK:
+						flag = False
+						break
+				if not flag: # 如果在当前行找到了黑色像素点，就是起始行
+				    begin_row = row
+				    break
+			for row in reversed(range(height)):
+				flag = True
+				for col in range(start_x, start_x + width):
+					if self._image.getpixel((col, row)) == COLOR_RGB_BLACK:
+						flag = False
+						break
+				if not flag:
+					end_row = row
+					break
+			croped_images.append(self._image.crop((start_x, begin_row, start_x + width, end_row + 1)))
+		
+		return croped_images
 
 def main():
 	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%15))
