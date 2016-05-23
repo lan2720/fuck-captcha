@@ -44,7 +44,7 @@ class SJTUCaptcha(object):
 		# 获取验证码预处理结果: 返回二维list，一行表示一个child image
 		res = []
 		self._binaryzation()
-		# self._image.show()
+		self._image.show()
 		child_images = self._cut_images()
 		for i in range(len(child_images)):
 			pass
@@ -85,7 +85,6 @@ class SJTUCaptcha(object):
 		return p_x
 
 	# 获取切割后的x轴坐标点，返回值为[初始位置，长度]的列表
-	# crop((start_x, start_y, start_x + width, start_y + height))
 	def _get_split_seq(self, projection_x):
 		split_seq = []
 		start_x = 0
@@ -120,9 +119,6 @@ class SJTUCaptcha(object):
 	def _drop_fall(self, image):
 		"""
 		对粘连两个字符的图片进行drop fall算法分割
-		
-		2. 找到极小值点
-		3. 以这个极小值点作为起始滴落点
 		"""
 		# 1. 竖直投影统计
 		width, height = image.size
@@ -133,9 +129,13 @@ class SJTUCaptcha(object):
 				if self._is_black(image.getpixel((x, y))):
 					hist_width[x] += 1 
 
-		# 这里只取一个最小值位置做分割，如果存在多个min忽略后面的
-		start_x = np.argmin(hist_width)
+		print "当前的hist_width: %s" % str(hist_width)
+		
+		# 2. 找到极小值点
+		start_x = self._get_start_x(hist_width)
+		print "当前的起始点是: %d" % start_x
 
+		# 3. 以这个极小值点作为起始滴落点,实施滴水算法
 		start_route = []
 		for y in range(height):
 			start_route.append((0, y))
@@ -144,14 +144,23 @@ class SJTUCaptcha(object):
 		filter_end_route = [max(list(k)) for _, k in groupby(end_route, lambda x: x[1])]
 		# 两个字符的图片，do_split得到的是左边那个字符
 		self._do_split(image, start_route, filter_end_route)
-		start_route = filter_end_route
+		
 
 		# 再得到最右边字符
+		start_route = map(lambda x: (x[0] + 1, x[1]), filter_end_route)
 		end_route = []
 		for y in range(height):
 			end_route.append((width - 1, y))
 		self._do_split(image, start_route, end_route)
-		# print self._get_split_route(image, start_x, height)
+
+	def _get_start_x(self, hist_width):
+		"""
+		根据待切割的图片的竖直投影统计hist_width，找到合适的滴水起始点
+		hist_width的中间值，前后再取4个值，在这个范围内找最小值
+		"""
+		mid = len(hist_width)/2
+		# 共9个值
+		return mid - 4 + np.argmin(hist_width[mid - 4:mid + 5])
 
 	def _get_end_route(self, image, start_x, height):
 		"""
@@ -162,7 +171,7 @@ class SJTUCaptcha(object):
 		right_limit = image.size[0] - 1
 
 		end_route = []
-		print start_x
+		print "当前的start_x: %d" % start_x
 		cur_p = (start_x, 0)
 		last_p = cur_p
 		end_route.append(cur_p)
@@ -294,16 +303,11 @@ class SJTUCaptcha(object):
 
 		image = Image.new('RGB', (width, height), COLOR_RGB_WHITE)
 
-		
-		for i in range(len(filter_ends)):
+		for i in range(height):
 			start = starts[i]
 			end = filter_ends[i]
-			print "start : {}, end : {}".format(str(start), str(end))
-			for x in range(start[0], end[0]):
-				print "每一行从左到右扫描...x = %d, y = %d" % (x, start[1])
+			for x in range(start[0], end[0]+1):
 				if self._is_black(source_image.getpixel((x, start[1]))):
-					print "此处为黑色"
-					print (x - left, start[1] - top)
 					image.putpixel((x - left, start[1] - top), COLOR_RGB_BLACK)
 
 		image.show()
@@ -442,7 +446,7 @@ class SJTUCaptcha(object):
 def main():
 	train_data = []#np.zeros(shape = (1500, NORM_SIZE*NORM_SIZE))
 	# for i in xrange(10):
-	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%26))
+	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%195))
 	s = myCaptcha.preprocess()
 
 	
