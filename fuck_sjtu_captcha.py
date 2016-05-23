@@ -33,6 +33,8 @@ class SJTUCaptcha(object):
 		:param image: 验证码图片文件 Image Object
 		:param manual: 是否人工验证, 默认为False, 采用机器验证
 		"""
+		if isinstance(image, str) or isinstance(image, unicode):
+			self.name = image.split('/')[-1].split('.')[0]
 		if isinstance(image, file) or isinstance(image, str) or isinstance(image, unicode):
 			self._image = Image.open(image)
 		elif isinstance(image, JpegImageFile):
@@ -42,17 +44,25 @@ class SJTUCaptcha(object):
 
 	def preprocess(self):
 		# 获取验证码预处理结果: 返回二维list，一行表示一个child image
-		res = []
+		# res = []
+
+		store_path = PROCESSED_DATA_DIR + self.name.split('.')[0]
+		if not os.path.exists(store_path):
+			os.mkdir(store_path)
+
 		self._binaryzation()
-		self._image.show()
+		
 		child_images = self._cut_images()
 		for i in range(len(child_images)):
-			pass
-			# child_images[i].show()
-			# normalized_image = self._resize_to_norm(child_images[i])
+
+			normalized_image = self._resize_to_norm(child_images[i])
+			# normalized_image.show()
+			normalized_image.save(store_path + '/%d.jpg' % i)
+			# normalized_image.show()
+
 			# self._captcha_to_string(normalized_image, save_as = '%d'%i)
 			# res.append(self._captcha_to_list(normalized_image))
-		return res
+		# return res
 
 	def _binaryzation(self):
 		"""
@@ -64,7 +74,7 @@ class SJTUCaptcha(object):
 			for x in xrange(width):
 				r, g, b = self._image.getpixel((x, y))
 				value = 0.299 * r + 0.587 * g + 0.114 * b
-				#value就是灰度值，这里使用127作为阀值，
+				#value就是灰度值，这里使用127作为阀值
 				#小于127的就认为是黑色也就是0 大于等于127的就是白色，也就是255
 				if value < 170:
 					self._image.putpixel((x, y), COLOR_RGB_BLACK)
@@ -101,6 +111,9 @@ class SJTUCaptcha(object):
 				length += 1
 			else:
 				raise Exception('generating split sequence occurs error')
+		# 循环结束时如果length不为0，说明还有一部分需要append
+		if length != 0:
+			split_seq.append([start_x, length])
 		return split_seq
 
 	def _is_joint(self, split_len):
@@ -142,16 +155,19 @@ class SJTUCaptcha(object):
 
 		end_route = self._get_end_route(image, start_x, height)
 		filter_end_route = [max(list(k)) for _, k in groupby(end_route, lambda x: x[1])]
-		# 两个字符的图片，do_split得到的是左边那个字符
-		self._do_split(image, start_route, filter_end_route)
-		
+		# 两个字符的图片，首先得到的是左边那个字符
+		img1 = self._do_split(image, start_route, filter_end_route)
+		img1 = img1.crop((self._get_black_border(img1)))
 
 		# 再得到最右边字符
 		start_route = map(lambda x: (x[0] + 1, x[1]), filter_end_route)
 		end_route = []
 		for y in range(height):
 			end_route.append((width - 1, y))
-		self._do_split(image, start_route, end_route)
+		img2 = self._do_split(image, start_route, end_route)
+		img2 = img2.crop((self._get_black_border(img2)))
+
+		return [img1, img2]
 
 	def _get_start_x(self, hist_width):
 		"""
@@ -266,21 +282,6 @@ class SJTUCaptcha(object):
 		else:
 			raise Exception("what you request is out of nearby range")
 
-	def _get_next_pos(self, cx, cy, W):
-		if W == 1:
-			return (cx - 1, cy)
-		elif W == 2:
-			return (cx + 1, cy)
-		elif W == 3:
-			return (cx + 1, cy + 1)
-		elif W == 4:
-			return (cx, cy + 1)
-		elif W == 5:
-			return (cx - 1, cy + 1)
-		else:
-			raise Exception("value of W is incorrect, pls check")
-
-
 	def _do_split(self, source_image, starts, filter_ends):
 		"""
 		具体实行切割 
@@ -310,7 +311,7 @@ class SJTUCaptcha(object):
 				if self._is_black(source_image.getpixel((x, start[1]))):
 					image.putpixel((x - left, start[1] - top), COLOR_RGB_BLACK)
 
-		image.show()
+		return image
 
 	def _cut_images(self):
 		"""
@@ -349,12 +350,19 @@ class SJTUCaptcha(object):
 					break
 			croped_images.append(self._image.crop((start_x, begin_row, start_x + width, end_row + 1)))
 		
+		# 没考虑一个source image出现多个粘连图片的情况
+		need_drop_fall = False
 		for idx, split_info in enumerate(split_seq):
+			# split_info: (start_x, length)
 			if self._is_joint(split_info[1]):
-				print "找到一张粘连图片"
-				joint_image = croped_images[idx]
-				self._drop_fall(joint_image)
-				
+				need_drop_fall = True
+				print "找到一张粘连图片: %d" % idx
+				split_images = self._drop_fall(croped_images[idx])
+				break
+		if need_drop_fall:
+			del croped_images[idx]
+			croped_images.insert(idx, split_images[0])
+			croped_images.insert(idx + 1, split_images[1])
 
 		return croped_images
 	
@@ -370,12 +378,12 @@ class SJTUCaptcha(object):
 		min_y = height - 1
 		for y in range(height):
 			for x in range(width):
-				if image.getpixel((x, y)) == COLOR_RGBA_BLACK:
+				if image.getpixel((x, y)) == COLOR_RGB_BLACK:
 					min_x = min(min_x, x)
-					max_x = max(max_x, x)
+					max_x = max(max_x, x) 
 					min_y = min(min_y, y)
 					max_y = max(max_y, y)
-		return min_x, min_y, max_x, max_y
+		return min_x, min_y, max_x + 1, max_y + 1
 
 	def _rotate_image(self, image):
 		"""
@@ -445,10 +453,9 @@ class SJTUCaptcha(object):
 
 def main():
 	train_data = []#np.zeros(shape = (1500, NORM_SIZE*NORM_SIZE))
-	# for i in xrange(10):
-	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%195))
-	s = myCaptcha.preprocess()
+	for i in xrange(2500):
+		myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%i))
+		s = myCaptcha.preprocess()
 
-	
 if __name__ == '__main__':
 	main()
