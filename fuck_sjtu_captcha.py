@@ -13,7 +13,7 @@
 from PIL import Image
 import numpy as np
 import os
-
+from itertools import groupby
 
 from utils import (
 	COLOR_RGB_BLACK, COLOR_RGB_WHITE, COLOR_RGBA_BLACK, COLOR_RGBA_WHITE,
@@ -44,11 +44,11 @@ class SJTUCaptcha(object):
 		# 获取验证码预处理结果: 返回二维list，一行表示一个child image
 		res = []
 		self._binaryzation()
-		self._image.show()
+		# self._image.show()
 		child_images = self._cut_images()
 		for i in range(len(child_images)):
-			# pass
-			child_images[i].show()
+			pass
+			# child_images[i].show()
 			# normalized_image = self._resize_to_norm(child_images[i])
 			# self._captcha_to_string(normalized_image, save_as = '%d'%i)
 			# res.append(self._captcha_to_list(normalized_image))
@@ -104,6 +104,210 @@ class SJTUCaptcha(object):
 				raise Exception('generating split sequence occurs error')
 		return split_seq
 
+	def _is_joint(self, split_len):
+		"""
+		以字符宽度统计值判断当前split_len是否是两个字符的长度
+		返回True需要进一步进行滴水算法分割
+		"""
+		return True if split_len >= 18 else False
+
+	def _is_black(self, rgb):
+		"""
+		: param rgb: tuple (r, g, b) 
+		"""
+		return True if rgb == COLOR_RGB_BLACK else False
+
+	def _drop_fall(self, image):
+		"""
+		对粘连两个字符的图片进行drop fall算法分割
+		
+		2. 找到极小值点
+		3. 以这个极小值点作为起始滴落点
+		"""
+		# 1. 竖直投影统计
+		width, height = image.size
+		print "当前待切割图片的 width: %d, height: %d" % (width, height)
+		hist_width = [0]*width
+		for x in xrange(width):
+			for y in xrange(height):
+				if self._is_black(image.getpixel((x, y))):
+					hist_width[x] += 1 
+
+		# 这里只取一个最小值位置做分割，如果存在多个min忽略后面的
+		start_x = np.argmin(hist_width)
+
+		start_route = []
+		for y in range(height):
+			start_route.append((0, y))
+
+		end_route = self._get_end_route(image, start_x, height)
+		filter_end_route = [max(list(k)) for _, k in groupby(end_route, lambda x: x[1])]
+		# 两个字符的图片，do_split得到的是左边那个字符
+		self._do_split(image, start_route, filter_end_route)
+		start_route = filter_end_route
+
+		# 再得到最右边字符
+		end_route = []
+		for y in range(height):
+			end_route.append((width - 1, y))
+		self._do_split(image, start_route, end_route)
+		# print self._get_split_route(image, start_x, height)
+
+	def _get_end_route(self, image, start_x, height):
+		"""
+		获得滴水的路径
+		: param start_x: 滴水的起始x位置
+		"""
+		left_limit = 0
+		right_limit = image.size[0] - 1
+
+		end_route = []
+		print start_x
+		cur_p = (start_x, 0)
+		last_p = cur_p
+		end_route.append(cur_p)
+
+		while cur_p[1] < (height - 1):
+			sum_n = 0
+			maxW = 0 # max Z_j*W_j
+			nextX = cur_p[0]
+			nextY = cur_p[1]
+			for i in range(1, 6):
+				curW = self._get_nearby_pixel_val(image, cur_p[0], cur_p[1], i) * (6 - i)
+				sum_n += curW
+				if maxW < curW:
+					maxW = curW
+			
+			# 如果全黑，需要看惯性
+			if sum_n == 0:
+				maxW = 4
+
+			# 如果全白，则默认垂直下落
+			if sum_n == 15:
+				maxW = 6
+
+			if maxW == 1:
+				nextX = cur_p[0] - 1
+				nextY = cur_p[1]
+			elif maxW == 2:
+				nextX = cur_p[0] + 1
+				nextY = cur_p[1]
+			elif maxW == 3:
+				nextX = cur_p[0] + 1
+				nextY = cur_p[1] + 1
+			elif maxW == 5:
+				nextX = cur_p[0] - 1
+				nextY = cur_p[1] + 1
+			elif maxW == 6:
+				nextX = cur_p[0]
+				nextY = cur_p[1] + 1
+			elif maxW == 4:
+				if nextX > cur_p[0]: # 具有向右的惯性
+					nextX = cur_p[0] + 1
+					nextY = cur_p[1] + 1
+
+				if nextX < cur_p[0]:
+					nextX = cur_p[0]
+					nextY = cur_p[1] + 1
+
+				if sum_n == 0:
+					nextX = cur_p[0]
+					nextY = cur_p[1] + 1
+			else:
+				raise Exception("get a wrong maxW, pls check")
+
+			# 如果出现重复运动
+			if last_p[0] == nextX and last_p[1] == nextY:
+				if nextX < cur_p[0]:
+					maxW = 5
+					nextX = cur_p[0] + 1
+					nextY = cur_p[1] + 1
+				else:
+					maxW = 3
+					nextX = cur_p[0] - 1
+					nextY = cur_p[1] + 1
+
+			last_p = cur_p
+
+			if nextX > right_limit:
+				nextX = right_limit
+				nextY = cur_p[1] + 1
+
+			if nextX < left_limit:
+				nextX = left_limit
+				nextY = cur_p[1] + 1
+
+			cur_p = (nextX, nextY)
+			end_route.append(cur_p)
+
+		# 返回分割路径
+		return end_route
+
+	def _get_nearby_pixel_val(self, image, cx, cy, j):
+		if j == 1:
+			return 0 if self._is_black(image.getpixel((cx - 1, cy + 1))) else 1
+		elif j == 2:
+			return 0 if self._is_black(image.getpixel((cx, cy + 1))) else 1
+		elif j == 3:
+			return 0 if self._is_black(image.getpixel((cx + 1, cy + 1))) else 1
+		elif j == 4:
+			return 0 if self._is_black(image.getpixel((cx + 1, cy))) else 1
+		elif j == 5:
+			return 0 if self._is_black(image.getpixel((cx - 1, cy))) else 1
+		else:
+			raise Exception("what you request is out of nearby range")
+
+	def _get_next_pos(self, cx, cy, W):
+		if W == 1:
+			return (cx - 1, cy)
+		elif W == 2:
+			return (cx + 1, cy)
+		elif W == 3:
+			return (cx + 1, cy + 1)
+		elif W == 4:
+			return (cx, cy + 1)
+		elif W == 5:
+			return (cx - 1, cy + 1)
+		else:
+			raise Exception("value of W is incorrect, pls check")
+
+
+	def _do_split(self, source_image, starts, filter_ends):
+		"""
+		具体实行切割 
+		: param starts: 每一行的起始点 tuple of list
+		: param ends: 每一行的终止点
+		"""
+		left = starts[0][0]
+		top = starts[0][1]
+		right = filter_ends[0][0]
+		bottom = filter_ends[0][1]
+
+		for i in range(len(starts)):
+			left = min(starts[i][0], left)
+			top = min(starts[i][1], top)
+			right = max(filter_ends[i][0], right)
+			bottom = max(filter_ends[i][1], bottom)
+
+		width = right - left + 1
+		height = bottom - top + 1
+
+		image = Image.new('RGB', (width, height), COLOR_RGB_WHITE)
+
+		
+		for i in range(len(filter_ends)):
+			start = starts[i]
+			end = filter_ends[i]
+			print "start : {}, end : {}".format(str(start), str(end))
+			for x in range(start[0], end[0]):
+				print "每一行从左到右扫描...x = %d, y = %d" % (x, start[1])
+				if self._is_black(source_image.getpixel((x, start[1]))):
+					print "此处为黑色"
+					print (x - left, start[1] - top)
+					image.putpixel((x - left, start[1] - top), COLOR_RGB_BLACK)
+
+		image.show()
+
 	def _cut_images(self):
 		"""
 		切割图像为单个字符块
@@ -141,6 +345,13 @@ class SJTUCaptcha(object):
 					break
 			croped_images.append(self._image.crop((start_x, begin_row, start_x + width, end_row + 1)))
 		
+		for idx, split_info in enumerate(split_seq):
+			if self._is_joint(split_info[1]):
+				print "找到一张粘连图片"
+				joint_image = croped_images[idx]
+				self._drop_fall(joint_image)
+				
+
 		return croped_images
 	
 	def _get_black_border(self, image):
@@ -227,17 +438,13 @@ class SJTUCaptcha(object):
 			for row in xrange(NORM_SIZE):
 				outfile.write(''.join(map(str, data[row*NORM_SIZE:(row+1)*NORM_SIZE])) + '\n')
 
+
 def main():
 	train_data = []#np.zeros(shape = (1500, NORM_SIZE*NORM_SIZE))
-	# for i in xrange(11, 14):
-	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%12))
+	# for i in xrange(10):
+	myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%26))
 	s = myCaptcha.preprocess()
-	# print len(s)
-	# train_data.extend(myCaptcha.preprocess())
 
-	# print "===="
-	# aaa = np.asarray(train_data)
-	# print aaa.shape
 	
 if __name__ == '__main__':
 	main()
