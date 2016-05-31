@@ -12,5 +12,6 @@ BORDER_BOTTOM = 3
 
 RAW_DATA_DIR = 'captcha/'
 PROCESSED_DATA_DIR = 'processed/'
+LABELS_DIR = 'labels/'
 
 NORM_SIZE = 20

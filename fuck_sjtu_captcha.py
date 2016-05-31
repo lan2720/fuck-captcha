@@ -13,12 +13,13 @@
 from PIL import Image
 import numpy as np
 import os
+import pickle
 from itertools import groupby
 
 from utils import (
 	COLOR_RGB_BLACK, COLOR_RGB_WHITE, COLOR_RGBA_BLACK, COLOR_RGBA_WHITE,
 	BORDER_LEFT, BORDER_TOP, BORDER_RIGHT, BORDER_BOTTOM,
-	RAW_DATA_DIR, PROCESSED_DATA_DIR,
+	RAW_DATA_DIR, PROCESSED_DATA_DIR, LABELS_DIR,
 	NORM_SIZE,
 )
 
@@ -44,7 +45,7 @@ class SJTUCaptcha(object):
 
 	def preprocess(self):
 		# 获取验证码预处理结果: 返回二维list，一行表示一个child image
-		# res = []
+		res = []
 
 		store_path = PROCESSED_DATA_DIR + self.name.split('.')[0]
 		if not os.path.exists(store_path):
@@ -57,12 +58,17 @@ class SJTUCaptcha(object):
 
 			normalized_image = self._resize_to_norm(child_images[i])
 			# normalized_image.show()
-			normalized_image.save(store_path + '/%d.jpg' % i)
+			# normalized_image.save(store_path + '/%d.jpg' % i)
 			# normalized_image.show()
 
 			# self._captcha_to_string(normalized_image, save_as = '%d'%i)
-			# res.append(self._captcha_to_list(normalized_image))
-		# return res
+			res.append(self._captcha_to_list(normalized_image))
+		# 如果当前处理的验证码只有四位，再加一个20*20的全零list
+		if len(res) == 4:
+			res.append([0]*400)
+
+		assert len(res) == 5
+		return res
 
 	def _binaryzation(self):
 		"""
@@ -451,11 +457,56 @@ class SJTUCaptcha(object):
 				outfile.write(''.join(map(str, data[row*NORM_SIZE:(row+1)*NORM_SIZE])) + '\n')
 
 
+
+
+
+def load_labels():
+	labels = []
+	# files = [f for f in os.listdir(LABELS_DIR) if os.path.isfile(os.path.join(LABELS_DIR,f))]
+	# sorted(files)
+	files = ['0-499.txt', '500-999.txt', '1000-1499.txt', '1500-1999.txt', '2000-2499.txt', '2500-3999.txt',
+			'4000-5499.txt', '5500-6999.txt', '7000-8499.txt', '8500-9999.txt']
+	for f in files:
+		print f
+		with open(os.path.join(LABELS_DIR,f), 'r') as input_file:
+			labels.extend(map(str.strip, input_file.readlines()))
+	
+	with open('data/labels.pkl', 'wb') as f:
+		pickle.dump(np.asarray(labels), f)
+	print np.asarray(labels).shape
+
+	print "==== test ===="
+	test()
+
+
+
+
+def test():
+	with open('data/labels.pkl', 'rb') as f:
+		a = pickle.load(f)
+	print a.shape
+	print a[500:510]
+
 def main():
-	train_data = []#np.zeros(shape = (1500, NORM_SIZE*NORM_SIZE))
-	for i in xrange(2500):
+	# train_data = [82, 190, 260, 279, 309, 339, 352, 360, 450]#np.zeros(shape = (1500, NORM_SIZE*NORM_SIZE))
+	train_data = []
+	for i in xrange(10000): # xrange(10000)
 		myCaptcha = SJTUCaptcha(os.path.join(RAW_DATA_DIR, '%d.jpg'%i))
+		print "图片为:%d" %i
 		s = myCaptcha.preprocess()
+		# print s
+		# break
+		train_data.append(s)
+
+	with open('images.plk', 'wb') as f:
+		pickle.dump(np.asarray(train_data), f)
+	print np.asarray(train_data).shape
+
+	print "==== test ===="
+	test()
+
+
 
 if __name__ == '__main__':
-	main()
+	# main()
+	load_labels()
